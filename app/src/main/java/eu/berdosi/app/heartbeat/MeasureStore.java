@@ -54,6 +54,11 @@ class MeasureStore {
         }
     }
 
+    CopyOnWriteArrayList<Measurement<Integer>> getMeasurements(){
+        return measurements;
+    }
+
+
     Date getLastTimestamp() {
         return measurements.get(measurements.size() - 1).timestamp;
     }

@@ -1,8 +1,11 @@
 package eu.berdosi.app.heartbeat;
 
+import static eu.berdosi.app.heartbeat.RequestHandler.SendLogin;
+
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.SurfaceTexture;
@@ -12,6 +15,7 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.ActivityCompat;
 
+import android.os.CountDownTimer;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
@@ -22,8 +26,10 @@ import android.view.MenuItem;
 import android.view.TextureView;
 import android.view.Surface;
 import android.view.View;
+import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.google.android.material.snackbar.Snackbar;
 
@@ -43,6 +49,11 @@ public class MainActivity extends Activity implements ActivityCompat.OnRequestPe
     private static final int MENU_INDEX_EXPORT_RESULT = 1;
     private static final int MENU_INDEX_EXPORT_DETAILS = 2;
 
+    private CountDownTimer timer;
+    public static boolean IsRecording = false;
+    private final int measurementInterval = 45;
+    private final int measurementLength = 15000; // ensure the number of data points is the power of two
+
     public enum VIEW_STATE {
         MEASUREMENT,
         SHOW_RESULTS
@@ -61,12 +72,13 @@ public class MainActivity extends Activity implements ActivityCompat.OnRequestPe
             }
 
             if (msg.what == MESSAGE_UPDATE_FINAL) {
-                ((EditText) findViewById(R.id.editText)).setText(msg.obj.toString());
+                // ((EditText) findViewById(R.id.editText)).setText(msg.obj.toString());
 
                 // make sure menu items are enabled when it opens.
                 Menu appMenu = ((Toolbar) findViewById(R.id.toolbar)).getMenu();
 
                 setViewState(VIEW_STATE.SHOW_RESULTS);
+                onClickNewMeasurement();
             }
 
             if (msg.what == MESSAGE_CAMERA_NOT_AVAILABLE) {
@@ -85,6 +97,12 @@ public class MainActivity extends Activity implements ActivityCompat.OnRequestPe
     @Override
     protected void onResume() {
         super.onResume();
+
+        try {
+            RequestHandler.SendLogin();
+        } catch (Exception e) {
+            System.exit(-1);
+        }
 
         analyzer = new OutputAnalyzer(this, findViewById(R.id.graphTextureView), mainHandler);
 
@@ -109,7 +127,7 @@ public class MainActivity extends Activity implements ActivityCompat.OnRequestPe
             // hide the new measurement item while another one is in progress in order to wait
             // for the previous one to finish
             ((Toolbar) findViewById(R.id.toolbar)).getMenu().getItem(MENU_INDEX_NEW_MEASUREMENT).setVisible(false);
-
+            MainActivity.IsRecording = true;
             cameraService.start(previewSurface);
             analyzer.measurePulse(cameraTextureView, cameraService);
         }
@@ -119,7 +137,10 @@ public class MainActivity extends Activity implements ActivityCompat.OnRequestPe
     protected void onPause() {
         super.onPause();
         cameraService.stop();
-        if (analyzer != null) analyzer.stop();
+        if (analyzer != null) {
+            analyzer.stop();
+            MainActivity.IsRecording = false;
+        }
         analyzer = new OutputAnalyzer(this, findViewById(R.id.graphTextureView), mainHandler);
     }
 
@@ -144,6 +165,15 @@ public class MainActivity extends Activity implements ActivityCompat.OnRequestPe
                 ).show();
             }
         }
+    }
+
+    public void onOpenClicked(View view){
+            Context context = getApplicationContext();
+            CharSequence text = "Open door request sent.";
+            int duration = Toast.LENGTH_SHORT;
+
+            Toast toast = Toast.makeText(context, text, duration);
+            toast.show();
     }
 
     @Override
@@ -187,7 +217,7 @@ public class MainActivity extends Activity implements ActivityCompat.OnRequestPe
 
         // clear prior results
         char[] empty = new char[0];
-        ((EditText) findViewById(R.id.editText)).setText(empty, 0, 0);
+        // ((EditText) findViewById(R.id.editText)).setText(empty, 0, 0);
         ((TextView) findViewById(R.id.textView)).setText(empty, 0, 0);
 
         // hide the new measurement item while another one is in progress in order to wait
@@ -203,6 +233,7 @@ public class MainActivity extends Activity implements ActivityCompat.OnRequestPe
             // - TextureView isn't quite ready at the first onResume.
             Surface previewSurface = new Surface(previewSurfaceTexture);
             cameraService.start(previewSurface);
+            MainActivity.IsRecording = true;
             analyzer.measurePulse(cameraTextureView, cameraService);
         }
     }
@@ -214,9 +245,9 @@ public class MainActivity extends Activity implements ActivityCompat.OnRequestPe
     }
 
     public void onClickExportDetails(MenuItem item) {
-        final Intent intent = getTextIntent(((EditText) findViewById(R.id.editText)).getText().toString());
-        justShared = true;
-        startActivity(Intent.createChooser(intent, getString(R.string.send_output_to)));
+       //  final Intent intent = getTextIntent(((EditText) findViewById(R.id.editText)).getText().toString());
+        // justShared = true;
+        //startActivity(Intent.createChooser(intent, getString(R.string.send_output_to)));
     }
 
     private Intent getTextIntent(String intentText) {

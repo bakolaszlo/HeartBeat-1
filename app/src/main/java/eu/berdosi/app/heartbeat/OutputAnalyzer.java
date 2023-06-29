@@ -9,7 +9,21 @@ import android.util.Log;
 import android.view.TextureView;
 import android.view.View;
 
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
+
+import com.fasterxml.jackson.core.JsonProcessingException;
+
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.List;
+import java.util.ListIterator;
 import java.util.Locale;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -33,10 +47,13 @@ class OutputAnalyzer {
 
     private final Handler mainHandler;
 
+    private ArrayList<Float> pulses = new ArrayList <Float>();
+
     OutputAnalyzer(MainActivity activity, TextureView graphTextureView, Handler mainHandler) {
         this.activity = activity;
         this.chartDrawer = new ChartDrawer(graphTextureView);
         this.mainHandler = mainHandler;
+        pulses = new ArrayList <Float>();
     }
 
     private boolean detectValley() {
@@ -66,8 +83,8 @@ class OutputAnalyzer {
 
         detectedValleys = 0;
 
-        timer = new CountDownTimer(measurementLength, measurementInterval) {
-
+        timer = new CountDownTimer(measurementLength, measurementInterval)
+        {
             @Override
             public void onTick(long millisUntilFinished) {
                 // skip the first measurements, which are broken by exposure metering
@@ -105,6 +122,10 @@ class OutputAnalyzer {
                                 detectedValleys,
                                 1f * (measurementLength - millisUntilFinished - clipLength) / 1000f);
 
+                        pulses.add((valleys.size() == 1)
+                                ? (60f * (detectedValleys) / (Math.max(1, (measurementLength - millisUntilFinished - clipLength) / 1000f)))
+                                : (60f * (detectedValleys - 1) / (Math.max(1, (valleys.get(valleys.size() - 1) - valleys.get(0)) / 1000f))));
+
                         sendMessage(MainActivity.MESSAGE_UPDATE_REALTIME, currentValue);
                     }
 
@@ -135,31 +156,13 @@ class OutputAnalyzer {
                         Locale.getDefault(),
                         activity.getResources().getQuantityString(R.plurals.measurement_output_template, detectedValleys - 1),
                         60f * (detectedValleys - 1) / (Math.max(1, (valleys.get(valleys.size() - 1) - valleys.get(0)) / 1000f)),
-                        detectedValleys - 1,
-                        1f * (valleys.get(valleys.size() - 1) - valleys.get(0)) / 1000f);
+                        detectedValleys - 1);
 
                 sendMessage(MainActivity.MESSAGE_UPDATE_REALTIME, currentValue);
 
                 StringBuilder returnValueSb = new StringBuilder();
                 returnValueSb.append(currentValue);
                 returnValueSb.append(activity.getString(R.string.row_separator));
-
-                // look for "drops" of 0.15 - 0.75 in the value
-                // a drop may take 2-3 ticks.
-                // int dropCount = 0;
-                // for (int stdValueIdx = 4; stdValueIdx < stdValues.size(); stdValueIdx++) {
-                //     if (((stdValues.get(stdValueIdx - 2).measurement - stdValues.get(stdValueIdx).measurement) > dropHeight) &&
-                //             !((stdValues.get(stdValueIdx - 3).measurement - stdValues.get(stdValueIdx - 1).measurement) > dropHeight) &&
-                //            !((stdValues.get(stdValueIdx - 4).measurement - stdValues.get(stdValueIdx - 2).measurement) > dropHeight)
-                //    ) {
-                //        dropCount++;
-                //    }
-                // }
-
-                // returnValueSb.append(activity.getString(R.string.detected_pulse));
-                // returnValueSb.append(activity.getString(R.string.separator));
-                // returnValueSb.append((float) dropCount / ((float) (measurementLength - clipLength) / 1000f / 60f));
-                // returnValueSb.append(activity.getString(R.string.row_separator));
 
                 returnValueSb.append(activity.getString(R.string.raw_values));
                 returnValueSb.append(activity.getString(R.string.row_separator));
@@ -188,9 +191,19 @@ class OutputAnalyzer {
                     returnValueSb.append(activity.getString(R.string.row_separator));
                 }
 
+
                 sendMessage(MainActivity.MESSAGE_UPDATE_FINAL, returnValueSb.toString());
 
                 cameraService.stop();
+                MainActivity.IsRecording=false;
+                CopyOnWriteArrayList<Measurement<Integer>> result = store.getMeasurements();
+                try {
+                    RequestHandler.SendPulseData(result);
+                } catch (JsonProcessingException e) {
+                    // throw new RuntimeException(e);
+                }
+                // timer.start();
+
             }
         };
 
